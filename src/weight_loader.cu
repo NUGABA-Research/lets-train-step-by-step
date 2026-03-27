@@ -2,6 +2,8 @@
 #include <cstring>
 #include <cstdint>
 
+#include <string>
+
 #include <cuda_runtime.h>
 
 #include "../third_party/cJSON/cJSON.h"
@@ -23,10 +25,24 @@ int main(void) {
 
     fread(header_size_buffer, 1, 8, fp); // read and save to 'header_size_buffer', '1' byte-sized '8' elements, from 'fp'
     memcpy(&header_size, header_size_buffer, sizeof(uint64_t));
-
-    //cJSON *json = cJSON_Parse(header);
     
     printf("%lu\n", header_size);
+
+    std::string header(header_size, 0);
+    fread(header.data(), 1, header_size, fp);
+
+    cJSON *parsed_header = cJSON_Parse(header.c_str());
+    if (parsed_header == NULL) {
+        fprintf(stderr, "Safetensor information parsing failed.");
+        return -1;
+    }
+
+    char* header_content = cJSON_Print(parsed_header);
+    printf("%s\n", header_content);
+    free(header_content);
+
+    cJSON_Delete(parsed_header);
+    fclose(fp);
 
     // hello<<<1, 4>>>();
     // cudaError_t err = cudaDeviceSynchronize();
