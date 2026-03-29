@@ -8,10 +8,6 @@
 
 #include "../third_party/cJSON/cJSON.h"
 
-// __global__ void hello() {
-//     printf("Hello from GPU! block=%d thread=%d\n", blockIdx.x, threadIdx.x);
-// }
-
 int main(void) {
     FILE *fp = fopen("weights/model.safetensors", "rb");
     
@@ -26,7 +22,7 @@ int main(void) {
     fread(header_size_buffer, 1, 8, fp); // read and save to 'header_size_buffer', '1' byte-sized '8' elements, from 'fp'
     memcpy(&header_size, header_size_buffer, sizeof(uint64_t));
     
-    printf("%lu\n", header_size);
+    printf("Header size: %lu\n", header_size);
 
     std::string header(header_size, 0);
     fread(header.data(), 1, header_size, fp);
@@ -38,19 +34,65 @@ int main(void) {
     }
 
     char* header_content = cJSON_Print(parsed_header);
-    printf("%s\n", header_content);
+    printf("Header content: %s\n", header_content);
+
+    long weights_start_pointer = ftell(fp);
+    if (weights_start_pointer == -1) {
+        fprintf(stderr, "Reading weights start pointer of the file failed.");
+        return -1;
+    }
+
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        fprintf(stderr, "Seeking the end pointer of the file failed.");
+        return -1;
+    }
+
+    long end_pointer = ftell(fp);
+    if (end_pointer == -1) {
+        fprintf(stderr, "Reading end pointer of the file failed.");
+        return -1;
+    }
+
+    long weights_total_size = end_pointer - weights_start_pointer;
+    printf("Size of weights: %ld\n", weights_total_size);
+
+    void *host_buffer_for_weights;
+
+#ifdef CPU_ONLY
+    host_buffer_for_weights = malloc(weights_total_size);
+#else
+    cudaMallocHost(&host_buffer_for_weights, weights_total_size);
+#endif
+
+    if (fseek(fp, weights_start_pointer, SEEK_SET) != 0) {
+        fprintf(stderr, "Seeking weights start pointer of the file failed.");
+        return -1;
+    }
+
+    fread(host_buffer_for_weights, 1, weights_total_size, fp);
+
+    void* weights_pointer;
+
+#ifdef CPU_ONLY
+    printf("We can't load any weights to GPU, since this computer does not have one.\n");
+#else
+    cudaMalloc(&weights_pointer, weights_total_size);
+    cudaMemcpy(weights_pointer, host_buffer_for_weights, weights_total_size, cudaMemcpyHostToDevice);
+#endif
+
+    // WIP
+
+#ifdef CPU_ONLY
+    free(host_buffer_for_weights);
+#else
+    cudaFree(weights_pointer);
+    cudaFreeHost(host_buffer_for_weights);
+#endif
+
     free(header_content);
 
     cJSON_Delete(parsed_header);
     fclose(fp);
-
-    // hello<<<1, 4>>>();
-    // cudaError_t err = cudaDeviceSynchronize();
-
-    // if (err != cudaSuccess) {
-    //     printf("CUDA error: %s\n", cudaGetErrorString(err));
-    //     return 1;
-    // }
 
     return 0;
 }
