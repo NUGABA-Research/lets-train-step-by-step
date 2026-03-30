@@ -8,6 +8,8 @@
 
 #include "../third_party/cJSON/cJSON.h"
 
+#include "gpt2.h"
+
 int main(void) {
     FILE *fp = fopen("weights/model.safetensors", "rb");
     
@@ -71,23 +73,40 @@ int main(void) {
 
     fread(host_buffer_for_weights, 1, weights_total_size, fp);
 
-    void* weights_pointer;
-
 #ifdef CPU_ONLY
     printf("We can't load any weights to GPU, since this computer does not have one.\n");
-#else
+
+    free(host_buffer_for_weights);
+    free(header_content);
+
+    cJSON_Delete(parsed_header);
+    fclose(fp);
+
+    return 0;
+#endif
+
+    void* weights_pointer;
+
     cudaMalloc(&weights_pointer, weights_total_size);
     cudaMemcpy(weights_pointer, host_buffer_for_weights, weights_total_size, cudaMemcpyHostToDevice);
-#endif
+
+    GPT2* gpt2 = (GPT2*)malloc(sizeof(GPT2));
+
+    gpt2->config.n_layer = 12;
+    gpt2->config.n_head = 12;
+    gpt2->config.d_model = 768;
+    gpt2->config.vocab_size = 50257;
+    gpt2->config.seq_len = 1024;
+
+    gpt2->weight.blocks = (TransformerBlockWeight*)calloc(gpt2->config.n_layer, sizeof(TransformerBlockWeight));
 
     // WIP
 
-#ifdef CPU_ONLY
-    free(host_buffer_for_weights);
-#else
+    free(gpt2->weight.blocks);
+    free(gpt2);
+
     cudaFree(weights_pointer);
     cudaFreeHost(host_buffer_for_weights);
-#endif
 
     free(header_content);
 
