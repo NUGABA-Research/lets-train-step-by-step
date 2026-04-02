@@ -7,21 +7,22 @@ struct GPT2Config {
 };
 
 struct TransformerBlockWeight {
-    float *h_n_ln_1_weight;
-    float *h_n_ln_1_bias;
+    float *ln_1_weight;
+    float *ln_1_bias;
 
-    float *h_n_attn_c_attn_weight;
-    float *h_n_attn_c_attn_bias;
-    float *h_n_attn_c_proj_weight;
-    float *h_n_attn_c_proj_bias;
+    float *attn_c_attn_weight;
+    float *attn_c_attn_bias;
+    float *attn_c_proj_weight;
+    float *attn_c_proj_bias;
+    float *attn_bias;
 
-    float *h_n_ln_2_weight;
-    float *h_n_ln_2_bias;
+    float *ln_2_weight;
+    float *ln_2_bias;
 
-    float *h_n_mlp_c_fc_weight;
-    float *h_n_mlp_c_fc_bias;
-    float *h_n_mlp_c_proj_weight;
-    float *h_n_mlp_c_proj_bias;
+    float *mlp_c_fc_weight;
+    float *mlp_c_fc_bias;
+    float *mlp_c_proj_weight;
+    float *mlp_c_proj_bias;
 };
 
 struct GPT2Weight {

@@ -92,6 +92,8 @@ int main(void) {
 
     GPT2* gpt2 = (GPT2*)malloc(sizeof(GPT2));
 
+    gpt2->params_memory = weights_pointer;
+
     gpt2->config.n_layer = 12;
     gpt2->config.n_head = 12;
     gpt2->config.d_model = 768;
@@ -100,12 +102,114 @@ int main(void) {
 
     gpt2->weight.blocks = (TransformerBlockWeight*)calloc(gpt2->config.n_layer, sizeof(TransformerBlockWeight));
 
-    // WIP
+    // We will not do the sanity check here.
+    cJSON *tensor = parsed_header->child;
+    while (tensor != NULL) {
+        const char *tensor_name = tensor->string;
+        
+        if (strcmp(tensor_name, "__metadata__") == 0) {
+            tensor = tensor->next;
+            continue;
+        }
+
+        cJSON *offsets = cJSON_GetObjectItem(tensor, "data_offsets");
+        if (offsets == NULL) {
+            fprintf(stderr, "Failed to get object item \"data_offsets\".");
+            return -1;
+        }
+
+        cJSON *offset_start_ptr = cJSON_GetArrayItem(offsets, 0);
+        if (offset_start_ptr == NULL) {
+            fprintf(stderr, "Failed to get 0th item of the \"data_offsets\" array.");
+            return -1;
+        }
+        long offset_start_value = offset_start_ptr->valueint;
+
+        float* target_address = (float*)((char*)gpt2->params_memory + offset_start_value);
+        
+        if (strcmp(tensor_name, "wte.weight") == 0) {
+            gpt2->weight.wte_weight = target_address;
+        }
+        else if (strcmp(tensor_name, "wpe.weight") == 0) {
+            gpt2->weight.wpe_weight = target_address;
+        } 
+        else if (strcmp(tensor_name, "ln_f.weight") == 0) {
+            gpt2->weight.ln_f_weight = target_address;
+        } 
+        else if (strcmp(tensor_name, "ln_f.bias") == 0) {
+            gpt2->weight.ln_f_bias = target_address;
+        } 
+        else if (strncmp(tensor_name, "h.", 2) == 0) {
+            unsigned int layer_depth;
+            char layer_type[19];
+
+            if (sscanf(tensor_name, "h.%u.%s", &layer_depth, layer_type) != 2) {
+                fprintf(stderr, "Parsing a tensor name in a transformer block failed.");
+                return -1;
+            }
+
+            if (layer_depth > 11) {
+                fprintf(stderr, "The depth of the layer is out of range.");
+                return -1;
+            }
+
+            if (strcmp(layer_type, "ln_1.weight") == 0) {
+                gpt2->weight.blocks[layer_depth].ln_1_weight = target_address;
+            }
+            else if (strcmp(layer_type, "ln_1.bias") == 0) {
+                gpt2->weight.blocks[layer_depth].ln_1_bias = target_address;
+            }
+            else if (strcmp(layer_type, "attn.c_attn.weight") == 0) {
+                gpt2->weight.blocks[layer_depth].attn_c_attn_weight = target_address;
+            }
+            else if (strcmp(layer_type, "attn.c_attn.bias") == 0) {
+                gpt2->weight.blocks[layer_depth].attn_c_attn_bias = target_address;
+            }
+            else if (strcmp(layer_type, "attn.c_proj.weight") == 0) {
+                gpt2->weight.blocks[layer_depth].attn_c_proj_weight = target_address;
+            }
+            else if (strcmp(layer_type, "attn.c_proj.bias") == 0) {
+                gpt2->weight.blocks[layer_depth].attn_c_proj_bias = target_address;
+            }
+            else if (strcmp(layer_type, "attn.bias") == 0) {
+                gpt2->weight.blocks[layer_depth].attn_bias = target_address;
+            }
+            else if (strcmp(layer_type, "ln_2.weight") == 0) {
+                gpt2->weight.blocks[layer_depth].ln_2_weight = target_address;
+            }
+            else if (strcmp(layer_type, "ln_2.bias") == 0) {
+                gpt2->weight.blocks[layer_depth].ln_2_bias = target_address;
+            }
+            else if (strcmp(layer_type, "mlp.c_fc.weight") == 0) {
+                gpt2->weight.blocks[layer_depth].mlp_c_fc_weight = target_address;
+            }
+            else if (strcmp(layer_type, "mlp.c_fc.bias") == 0) {
+                gpt2->weight.blocks[layer_depth].mlp_c_fc_bias = target_address;
+            }
+            else if (strcmp(layer_type, "mlp.c_proj.weight") == 0) {
+                gpt2->weight.blocks[layer_depth].mlp_c_proj_weight = target_address;
+            }
+            else if (strcmp(layer_type, "mlp.c_proj.bias") == 0) {
+                gpt2->weight.blocks[layer_depth].mlp_c_proj_bias = target_address;
+            }
+            else {
+                fprintf(stderr, "An unknown type tensor found.");
+                return -1;
+            }
+        }
+        else {
+            fprintf(stderr, "An unknown type tensor found.");
+            return -1;
+        }
+        
+        tensor = tensor->next;
+    }
+
+    cudaFree(gpt2->params_memory);
 
     free(gpt2->weight.blocks);
     free(gpt2);
 
-    cudaFree(weights_pointer);
     cudaFreeHost(host_buffer_for_weights);
 
     free(header_content);
