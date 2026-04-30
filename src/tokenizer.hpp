@@ -27,6 +27,7 @@ class Tokenizer {
         void load_merges(const std::string& merges_path);
         void build_byte_encoder();
         static std::string utf8_encode(uint32_t cp);
+        static std::vector<std::string> uft8_split(const std::string& s);
     private:
         std::vector<std::string> unicode_table;
         std::unordered_map<std::string, int> vocab;
