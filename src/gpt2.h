@@ -1,3 +1,5 @@
+#include <string>
+
 struct GPT2Config {
     int n_layer;   // 12
     int n_head;    // 12
@@ -40,4 +42,7 @@ struct GPT2 {
     GPT2Weight weight;
 
     void *params_memory;
+
+    GPT2(const std::string& weights_path, const std::string& config_path);
+    ~GPT2();
 };
