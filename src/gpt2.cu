@@ -98,7 +98,7 @@ GPT2Weight parse_safetensor_tensor(const json& parsed_header, void* params_memor
         if (name == "__metadata__") continue;
 
         size_t offset = item["data_offsets"][0].get<size_t>();
-        float* target = static_cast<float *>(static_cast<char *>(params_memory) + offset);
+        float* target = reinterpret_cast<float *>(static_cast<char *>(params_memory) + offset);
 
         if (name == "wte.weight") {
             weight.wte_weight = target;
