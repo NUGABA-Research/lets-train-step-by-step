@@ -110,7 +110,7 @@ std::string Tokenizer::utf8_encode(uint32_t cp) {
     return out;
 }
 
-std::vector<std::string> utf8_split(const std::string& s) {
+std::vector<std::string> Tokenizer::utf8_split(const std::string& s) {
     std::vector<std::string> out;
     // out.reserve(s.length());
     for (size_t i = 0; i < s.size(); ) {
@@ -136,4 +136,187 @@ std::vector<std::string> utf8_split(const std::string& s) {
         i = i + len;
     }        
     return out;
+}
+
+std::string Tokenizer::byte_encode(const std::string& word) const {
+    std::string out;
+    out.reserve(word.size() * 2);
+    for (const auto& w : word) {
+        out += unicode_table[static_cast<uint8_t>(w)];
+    }
+    return out;
+}
+
+std::vector<std::string> Tokenizer::bpe(const std::string& encoded) const {
+    auto tokens = utf8_split(encoded);
+    if (tokens.size() < 2) return tokens;
+
+    std::vector<std::string> next;
+    next.reserve(tokens.size());
+
+    while (true) {
+        int best_rank = INT_MAX;
+        size_t best_idx = SIZE_MAX;
+        for (size_t i = 0; i + 1 < tokens.size(); ++i) {
+            auto it = bpe_rank.find({tokens[i], tokens[i+1]});
+            if (it != bpe_rank.end() && it->second < best_rank) {
+                best_rank = it->second;
+                best_idx = i;
+            }
+        }
+
+        if (best_idx == SIZE_MAX) break;
+
+        std::string best_left = tokens[best_idx];
+        std::string best_right = tokens[best_idx + 1];
+
+        next.clear();
+        size_t i = 0;
+        while (i < tokens.size()) {
+            if (i + 1 < tokens.size() &&
+                tokens[i] == best_left && tokens[i+1] == best_right) {
+                next.push_back(tokens[i] + tokens[i+1]);
+                i += 2;
+            } else {
+                next.push_back(tokens[i]);
+                i += 1;
+            }
+        }
+        std::swap(tokens, next);
+
+        if (tokens.size() == 1) break;
+    }
+
+    return tokens;
+}
+
+std::vector<std::string> Tokenizer::pretokenize(const std::string& text) const {
+    std::vector<std::string> parts;
+
+    size_t i = 0;
+    const size_t n = text.size();
+
+    auto is_space = [](unsigned char c) {
+        return c == ' ' || c == '\t' || c == '\n' ||
+               c == '\r' || c == '\f' || c == '\v';
+    };
+
+    auto is_letter = [](unsigned char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    };
+
+    auto is_digit = [](unsigned char c) {
+        return c >= '0' && c <= '9';
+    };
+
+    while (i < n) {
+        size_t start = i;
+
+        // GPT-2 contraction patterns: 's, 't, 're, 've, 'm, 'll, 'd
+        if (text[i] == '\'') {
+            if (i + 2 <= n &&
+                (text.compare(i, 2, "'s") == 0 ||
+                 text.compare(i, 2, "'t") == 0 ||
+                 text.compare(i, 2, "'m") == 0 ||
+                 text.compare(i, 2, "'d") == 0)) {
+                parts.push_back(text.substr(i, 2));
+                i += 2;
+                continue;
+            }
+
+            if (i + 3 <= n &&
+                (text.compare(i, 3, "'re") == 0 ||
+                 text.compare(i, 3, "'ve") == 0 ||
+                 text.compare(i, 3, "'ll") == 0)) {
+                parts.push_back(text.substr(i, 3));
+                i += 3;
+                continue;
+            }
+        }
+
+        // Optional one leading space before letters/numbers/punctuation
+        bool has_leading_space = false;
+        if (text[i] == ' ' && i + 1 < n) {
+            unsigned char next = static_cast<unsigned char>(text[i + 1]);
+            if (!is_space(next)) {
+                has_leading_space = true;
+                i++;
+            }
+        }
+
+        if (i >= n) {
+            parts.push_back(text.substr(start));
+            break;
+        }
+
+        unsigned char c = static_cast<unsigned char>(text[i]);
+
+        // ?\p{L}+
+        if (is_letter(c)) {
+            while (i < n && is_letter(static_cast<unsigned char>(text[i]))) {
+                i++;
+            }
+            parts.push_back(text.substr(start, i - start));
+            continue;
+        }
+
+        // ?\p{N}+
+        if (is_digit(c)) {
+            while (i < n && is_digit(static_cast<unsigned char>(text[i]))) {
+                i++;
+            }
+            parts.push_back(text.substr(start, i - start));
+            continue;
+        }
+
+        // ?[^\s\p{L}\p{N}]+
+        if (!is_space(c)) {
+            while (i < n) {
+                unsigned char x = static_cast<unsigned char>(text[i]);
+                if (is_space(x) || is_letter(x) || is_digit(x)) {
+                    break;
+                }
+                i++;
+            }
+            parts.push_back(text.substr(start, i - start));
+            continue;
+        }
+
+        // \s+
+        while (i < n && is_space(static_cast<unsigned char>(text[i]))) {
+            i++;
+        }
+        parts.push_back(text.substr(start, i - start));
+    }
+
+    return parts;
+}
+
+std::vector<int> Tokenizer::encode(const std::string& text) const {
+    std::vector<int> ids;
+
+    if (text.empty()) {
+        return ids;
+    }
+
+    std::vector<std::string> words = pretokenize(text);
+
+    for (const std::string& word : words) {
+        std::string encoded = byte_encode(word);
+        std::vector<std::string> pieces = bpe(encoded);
+
+        for (const std::string& piece : pieces) {
+            auto it = vocab.find(piece);
+
+            if (it == vocab.end()) {
+                throw std::runtime_error(
+                    "token not found in vocab: " + piece
+                );
+            }
+
+            ids.push_back(it->second);
+        }
+    }
+
+    return ids;
 }

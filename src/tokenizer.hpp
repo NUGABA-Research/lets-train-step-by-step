@@ -22,12 +22,18 @@ class Tokenizer {
         Tokenizer(const std::string& vocab_path, 
             const std::string& merges_path);
         ~Tokenizer()=default;
+        std::vector<int> encode(const std::string& text) const;
+
     private:
         void load_vocab(const std::string& vocab_path);
         void load_merges(const std::string& merges_path);
         void build_byte_encoder();
         static std::string utf8_encode(uint32_t cp);
-        static std::vector<std::string> uft8_split(const std::string& s);
+        static std::vector<std::string> utf8_split(const std::string& s);
+        std::string byte_encode(const std::string& word) const;
+        std::vector<std::string> bpe(const std::string& encoded) const;
+        std::vector<std::string> pretokenize(const std::string& text) const;
+
     private:
         std::vector<std::string> unicode_table;
         std::unordered_map<std::string, int> vocab;
