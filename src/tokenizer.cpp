@@ -29,8 +29,20 @@ void Tokenizer::load_vocab(const std::string& vocab_path) {
     f >> j;
 
     vocab.reserve(j.size());
-    for (const auto& [token, id] : j.items()) {
-        vocab[token] = id.get<int>();
+    int max_id = -1;
+    for (const auto& [token, id_json] : j.items()) {
+        int id = id_json.get<int>();
+        vocab[token] = id;
+
+        if (id > max_id) {
+            max_id = id;
+        }
+    }
+
+    id_to_token.assign(static_cast<std::size_t>(max_id + 1), "");
+    for (const auto& [token, id_json] : j.items()) {
+        int id = id_json.get<int>();
+        id_to_token[static_cast<std::size_t>(id)] = token;
     }
 }
 
@@ -67,6 +79,7 @@ void Tokenizer::load_merges(const std::string& merges_path) {
 
 void Tokenizer::build_byte_encoder() {
     std::vector<int> bs;
+
     for (int b = 33; b <= 126; b++) bs.push_back(b);
     for (int b = 161; b <= 172; b++) bs.push_back(b);
     for (int b = 174; b <= 255; b++) bs.push_back(b);
@@ -76,7 +89,14 @@ void Tokenizer::build_byte_encoder() {
     int n = 0;
     for (int b = 0; b < 256; b++) {
         bool present = false;
-        for (int x : bs) { if (x == b) { present = true; break; } }
+
+        for (int x : bs) {
+            if (x == b) {
+                present = true;
+                break;
+            }
+        }
+
         if (!present) {
             bs.push_back(b);
             cs.push_back(256 + n);
@@ -85,8 +105,18 @@ void Tokenizer::build_byte_encoder() {
     }
 
     unicode_table.resize(256);
-    for (size_t i = 0; i < bs.size(); i++) {
-        unicode_table[bs[i]] = utf8_encode(static_cast<uint32_t>(cs[i]));
+    byte_decoder.clear();
+    byte_decoder.reserve(256);
+
+    for (std::size_t i = 0; i < bs.size(); i++) {
+        int byte_value = bs[i];
+        int code_point = cs[i];
+
+        std::string unicode_char =
+            utf8_encode(static_cast<std::uint32_t>(code_point));
+
+        unicode_table[static_cast<std::size_t>(byte_value)] = unicode_char;
+        byte_decoder[unicode_char] = static_cast<unsigned char>(byte_value);
     }
 }
 
@@ -319,4 +349,45 @@ std::vector<int> Tokenizer::encode(const std::string& text) const {
     }
 
     return ids;
+}
+
+std::string Tokenizer::decode(const std::vector<int>& ids) const {
+    std::string encoded_text;
+
+    for (int id : ids) {
+        if (id < 0 || static_cast<std::size_t>(id) >= id_to_token.size()) {
+            throw std::out_of_range(
+                std::format("invalid token id: {}", id)
+            );
+        }
+
+        const std::string& token = id_to_token[static_cast<std::size_t>(id)];
+
+        if (token.empty()) {
+            throw std::runtime_error(
+                std::format("empty token for id: {}", id)
+            );
+        }
+
+        encoded_text += token;
+    }
+
+    std::vector<std::string> chars = utf8_split(encoded_text);
+
+    std::string text;
+    text.reserve(chars.size());
+
+    for (const std::string& ch : chars) {
+        auto it = byte_decoder.find(ch);
+
+        if (it == byte_decoder.end()) {
+            throw std::runtime_error(
+                "byte decoder entry not found for token fragment: " + ch
+            );
+        }
+
+        text.push_back(static_cast<char>(it->second));
+    }
+
+    return text;
 }

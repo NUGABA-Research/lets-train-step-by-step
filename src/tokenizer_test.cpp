@@ -73,9 +73,9 @@ int main(int argc, char** argv) {
     const std::string vocab_path = argv[1];
     const std::string merges_path = argv[2];
 
-    try {
-        Tokenizer tokenizer(vocab_path, merges_path);
+    Tokenizer tokenizer(vocab_path, merges_path);
 
+    try {
         // Empty input should produce no token ids.
         expect_encode(tokenizer, "", {});
 
@@ -90,9 +90,12 @@ int main(int argc, char** argv) {
         expect_encode(tokenizer, "This is a test.", {1212, 318, 257, 1332, 13});
 
         std::cout << "\nAll tokenizer tests passed.\n";
-        return 0;
     } catch (const std::exception& e) {
         std::cerr << "Unhandled exception: " << e.what() << "\n";
-        return 1;
     }
+
+    std::string s = "Hello, this is GPT-2 from openAI";
+    auto ids = tokenizer.encode(s);
+    auto text = tokenizer.decode(ids);
+    std::cout << text << std::endl;
 }

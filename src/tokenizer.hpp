@@ -23,6 +23,7 @@ class Tokenizer {
             const std::string& merges_path);
         ~Tokenizer()=default;
         std::vector<int> encode(const std::string& text) const;
+        std::string decode(const std::vector<int>& ids )const;
 
     private:
         void load_vocab(const std::string& vocab_path);
@@ -38,4 +39,6 @@ class Tokenizer {
         std::vector<std::string> unicode_table;
         std::unordered_map<std::string, int> vocab;
         std::unordered_map<Pair, int, PairHash> bpe_rank;
+        std::vector<std::string> id_to_token;
+        std::unordered_map<std::string, unsigned char> byte_decoder;
 };
