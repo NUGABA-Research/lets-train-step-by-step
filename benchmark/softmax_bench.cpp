@@ -1,3 +1,4 @@
+#include <omp.h>
 #include <cmath>
 #include <limits>
 #include <random>
@@ -60,6 +61,82 @@ void softmax_online_branch(const std::vector<double>& x, std::vector<double>& y)
     }
 
     for (std::size_t i = 0; i < x.size(); ++i) {
+        y[i] = std::exp(x[i] - m) / sum;
+    }
+}
+
+struct MD {
+    double m;
+    double sum;
+};
+
+static inline MD identity_md() {
+    return {-std::numeric_limits<double>::infinity(), 0.0};
+}
+
+static inline MD combine_md(const MD& a, const MD& b) {
+    if (a.sum == 0.0) return b;
+    if (b.sum == 0.0) return a;
+
+    double m = std::max(a.m, b.m);
+    double sum = a.sum * std::exp(a.m - m)
+               + b.sum * std::exp(b.m - m);
+
+    return {m, sum};
+}
+
+static inline MD online_chunk(const std::vector<double>& x,
+                              std::size_t begin,
+                              std::size_t end) {
+    if (begin >= end) return identity_md();
+
+    double m = x[begin];
+    double sum = 1.0;
+
+    for (std::size_t i = begin + 1; i < end; ++i) {
+        double v = x[i];
+
+        if (v <= m) {
+            sum += std::exp(v - m);
+        } else {
+            sum = sum * std::exp(m - v) + 1.0;
+            m = v;
+        }
+    }
+
+    return {m, sum};
+}
+
+void softmax_online_parallel_omp(const std::vector<double>& x,
+                                 std::vector<double>& y) {
+    std::size_t n = x.size();
+    y.resize(n);
+
+    if (n == 0) return;
+
+    MD total = identity_md();
+
+    #pragma omp parallel
+    {
+        int tid = omp_get_thread_num();
+        int nt = omp_get_num_threads();
+
+        std::size_t begin = n * tid / nt;
+        std::size_t end   = n * (tid + 1) / nt;
+
+        MD local = online_chunk(x, begin, end);
+
+        #pragma omp critical
+        {
+            total = combine_md(total, local);
+        }
+    }
+
+    double m = total.m;
+    double sum = total.sum;
+
+    #pragma omp parallel for
+    for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(n); ++i) {
         y[i] = std::exp(x[i] - m) / sum;
     }
 }
@@ -130,6 +207,7 @@ int main() {
 
     benchmark("softmax_naive", softmax_naive, x, y1, warmup, repeat);
     benchmark("softmax_online_branch", softmax_online_branch, x, y2, warmup, repeat);
+    benchmark("softmax_online_parallel", softmax_online_parallel_omp, x, y2, warmup, repeat);
 
     return 0;
 }
