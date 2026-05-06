@@ -103,7 +103,8 @@ int main() {
     const int repeat = 100;
 
     std::vector<double> x(N);
-    std::vector<double> y(N);
+    std::vector<double> y1(N);
+    std::vector<double> y2(N);
     
     std::mt19937 rng(42);
     std::uniform_real_distribution<double> dist(-10.0,10.0);
@@ -127,8 +128,8 @@ int main() {
     std::cout << "sum_online     = " << sum_online << "\n";
     std::cout << "max_abs_diff   = " << max_abs_diff << "\n";
 
-    benchmark("softmax_naive", softmax_naive, x, y, warmup, repeat);
-    benchmark("softmax_online", softmax_online_branch, x, y, warmup, repeat);
+    benchmark("softmax_naive", softmax_naive, x, y1, warmup, repeat);
+    benchmark("softmax_online_branch", softmax_online_branch, x, y2, warmup, repeat);
 
     return 0;
 }
